@@ -143,7 +143,7 @@ if st.button("🚀 Launch Autonomous Extraction"):
                 )
                 
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash-2026',
+                    model='gemini-1.5-flash',
 
                     contents=f"Extract and script valid leads for {category} from this feed:\n{clean_text[:40000]}",
                     config=types.GenerateContentConfig(
