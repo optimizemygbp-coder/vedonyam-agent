@@ -95,7 +95,13 @@ async def run_cloud_crawler(target_url, cookies_json_str):
         page = await context.new_page()
         st.info("🔄 Cloud agent is browsing target portal undercover...")
         
-        await page.goto(target_url, wait_until="domcontentloaded")
+                # Network slow hone par bhi pipeline na ruke, isliye timeout 90 seconds kiya aur networkidle lagaya
+        try:
+            await page.goto(target_url, wait_until="networkidle", timeout=90000)
+        except Exception as e:
+            # Agar domcontentloaded tak bhi load ho jaye toh safe side par proceed karein
+            st.warning("⚠️ Network slow hai, par data extraction check kar rahe hain...")
+
         await asyncio.sleep(random.randint(5, 10)) 
         
         for i in range(random.randint(3, 5)):
