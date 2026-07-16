@@ -1,17 +1,3 @@
-# Cookies ke sameSite property ko automate sahi karne ke liye logic
-for cookie in cookies:
-    if "sameSite" in cookie:
-        val = str(cookie["sameSite"]).lower()
-        if val == "lax":
-            cookie["sameSite"] = "Lax"
-        elif val == "strict":
-            cookie["sameSite"] = "Strict"
-        elif val == "none":
-            cookie["sameSite"] = "None"
-        else:
-            # Agar kuch ajeeb ho toh safe side ke liye delete kar do
-            del cookie["sameSite"]
-
 import os
 import shutil
 
@@ -85,10 +71,26 @@ async def run_cloud_crawler(target_url, cookies_json_str):
         if cookies_json_str:
             try:
                 cookies = json.loads(cookies_json_str)
+                
+                # 🚀 Cookies sameSite fix karne ka automatic logic yahan set ho gaya hai
+                if isinstance(cookies, list):
+                    for cookie in cookies:
+                        if "sameSite" in cookie:
+                            val = str(cookie["sameSite"]).lower()
+                            if val == "lax":
+                                cookie["sameSite"] = "Lax"
+                            elif val == "strict":
+                                cookie["sameSite"] = "Strict"
+                            elif val == "none":
+                                cookie["sameSite"] = "None"
+                            else:
+                                del cookie["sameSite"]
+                                
                 await context.add_cookies(cookies)
             except Exception as e:
                 st.error(f"Invalid Cookie JSON Format: {e}")
                 return None
+
                 
         page = await context.new_page()
         st.info("🔄 Cloud agent is browsing target portal undercover...")
