@@ -1,3 +1,10 @@
+import os
+import shutil
+
+# Automatic Secrets Fixer for Render
+if os.path.exists("secrets.toml"):
+    os.makedirs(".streamlit", exist_ok=True)
+    shutil.copy("secrets.toml", ".streamlit/secrets.toml")
 import streamlit as st
 import asyncio
 import random
