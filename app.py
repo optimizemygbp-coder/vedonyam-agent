@@ -1,3 +1,17 @@
+# Cookies ke sameSite property ko automate sahi karne ke liye logic
+for cookie in cookies:
+    if "sameSite" in cookie:
+        val = str(cookie["sameSite"]).lower()
+        if val == "lax":
+            cookie["sameSite"] = "Lax"
+        elif val == "strict":
+            cookie["sameSite"] = "Strict"
+        elif val == "none":
+            cookie["sameSite"] = "None"
+        else:
+            # Agar kuch ajeeb ho toh safe side ke liye delete kar do
+            del cookie["sameSite"]
+
 import os
 import shutil
 
