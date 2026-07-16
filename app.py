@@ -1,6 +1,22 @@
 import os
 import shutil
 
+# Automatic Secrets Fixer for Render
+if os.path.exists("secrets.toml"):
+    os.makedirs(".streamlit", exist_ok=True)
+    shutil.copy("secrets.toml", ".streamlit/secrets.toml")
+
+# 🚀 NAYA CODE: Automatic Playwright Browser Installer
+try:
+    import playwright
+    # Check if browser is already installed, if not, install it
+    os.system("playwright install chromium")
+except Exception as e:
+    print(f"Playwright install error: {e}")
+
+import os
+import shutil
+
 # Automatic Secrets Synchronizer for Render Cloud
 if os.path.exists("secrets.toml"):
     os.makedirs(".streamlit", exist_ok=True)
