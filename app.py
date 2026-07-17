@@ -6,57 +6,55 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from bs4 import BeautifulSoup
 import pandas as pd
-import time
 
 st.set_page_config(
-    page_title="Vedonyam - USA Lead Extractor Pro", 
+    page_title="Vedonyam - Mobile/PC Lead Extractor", 
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed" # Mobile par sidebar auto-collapse ho jayega screen space bachane ke liye
 )
 
-# Custom CSS for Premium UI Styling
+# Responsive & Flat UI Customization for Mobile + Laptop
 st.markdown("""
     <style>
-        .reportview-container { background: #f5f7f9; }
-        .main-card {
-            background-color: #ffffff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
+        .block-container { padding: 1rem 1rem; }
+        .stButton>button { width: 100%; border-radius: 8px; height: 3rem; font-size: 16px; font-weight: bold; }
+        div[data-testid="stTextArea"] textarea { font-size: 14px; }
+        .stDataFrame { width: 100% !important; }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🚀 Vedonyam FB Comments USA Lead Extractor")
+st.title("🚀 Vedonyam FB Lead Pro (Mobile & PC)")
 st.markdown("---")
 
-# ----------------- AUTHENTICATIONS & HANDSHAKE -----------------
-try:
-    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
-    if not GEMINI_API_KEY:
-        st.error("Missing GEMINI_API_KEY in Secrets!")
-        st.stop()
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    raw_creds = st.secrets.get("GOOGLE_CREDS_JSON", "")
-    if raw_creds:
-        creds_dict = json.loads(raw_creds)
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        gc = gspread.authorize(creds)
-    else:
-        st.error("Google credentials configuration not found.")
-        st.stop()
-except Exception as auth_err:
-    st.error(f"Initialization Error: {auth_err}")
+# ----------------- AUTHENTICATIONS -----------------
+@st.cache_resource
+def init_connections():
+    try:
+        GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+        if not GEMINI_API_KEY:
+            return None, "Missing GEMINI_API_KEY"
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        raw_creds = st.secrets.get("GOOGLE_CREDS_JSON", "")
+        if raw_creds:
+            creds_dict = json.loads(raw_creds)
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            gc = gspread.authorize(creds)
+            return {"client": client, "gc": gc}, None
+        return None, "Google Sheets Credentials Missing"
+    except Exception as e:
+        return None, str(e)
+
+conns, err = init_connections()
+if err:
+    st.error(f"Setup Error: {err}")
     st.stop()
 
-# ----------------- UI INPUTS (SIDEBAR) -----------------
-st.sidebar.image("https://img.icons8.com/clouds/100/000000/database.png", width=100)
-st.sidebar.header("Target Configuration")
+client = conns["client"]
+gc = conns["gc"]
 
-# 20+ Main Categories dynamically mapped in UI
+# ----------------- UI CONFIGURATION -----------------
 categories_list = [
     "Roofing", "HVAC", "Plumbing", "General Contractor", "Electrical", 
     "Landscaping & Lawn Care", "Painting & Wallcovering", "Masonry & Brickwork", 
@@ -66,166 +64,107 @@ categories_list = [
     "Cleaning & Pressure Washing", "Solar Installation", "Window & Door Installation", 
     "Remodeling & Renovation", "Tree Services"
 ]
-niche_type = st.sidebar.selectbox("Select Target Niche", categories_list)
-extraction_mode = st.sidebar.radio("Extraction Mode", ["Paste Cleaned HTML (Safest & Fast)", "Auto Live Scrape"])
 
-# ----------------- OPTIMIZED DATA PROCESSING -----------------
-def clean_and_extract_html_fast(html_content):
-    cleaned_html = re.sub(r'<(script|style|svg|path|canvas|iframe)[^>]*>([\s\S]*?)<\/\1>', '', html_content)
-    soup = BeautifulSoup(cleaned_html, 'html.parser')
-    extracted_data = []
+niche_type = st.selectbox("🎯 Select Target Niche", categories_list)
+
+group_link_input = st.text_input("🔗 FB Group Link (Optional):", placeholder="https://...")
+post_link_input = st.text_input("📌 FB Post Link (Optional):", placeholder="https://...")
+
+html_input = st.text_area("📄 Paste FB Comments HTML Source (or clean text):", height=200)
+
+# ----------------- SOFT & FAST PROCESSING -----------------
+def process_data_soft(html_content):
+    # Soft pre-cleaning using simple regex to avoid RAM freeze
+    cleaned = re.sub(r'<(script|style|svg|path|canvas|iframe)[^>]*?>([\s\S]*?)</\1>', '', html_content)
+    soup = BeautifulSoup(cleaned, 'html.parser')
     
-    comment_blocks = soup.find_all(['div', 'span'], attrs={"dir": "auto"})
-    total_blocks = len(comment_blocks)
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for idx, block in enumerate(comment_blocks):
-        if idx % max(1, total_blocks // 10) == 0:
-            pct = int((idx / total_blocks) * 100)
-            progress_bar.progress(pct)
-            status_text.text(f"Parsing HTML Elements... {pct}%")
-            
-        text = block.get_text().strip()
+    extracted = []
+    # Targeted search directly for text containers to save memory
+    for element in soup.find_all(['div', 'span'], attrs={"dir": "auto"}):
+        text = element.get_text().strip()
         if len(text) > 12:
-            profile_link = "N/A"
-            parent_a = block.find_parent('a') or (block.find_previous('a') if hasattr(block, 'find_previous') else None)
-            if parent_a and parent_a.has_attr('href'):
-                href = parent_a['href']
+            p_link = "N/A"
+            parent = element.find_parent('a') or (element.find_previous('a') if hasattr(element, 'find_previous') else None)
+            if parent and parent.has_attr('href'):
+                href = parent['href']
                 if "facebook.com" in href or "/user/" in href or "profile.php" in href:
-                    profile_link = href if href.startswith("http") else f"https://www.facebook.com{href}"
+                    p_link = href if href.startswith("http") else f"https://www.facebook.com{href}"
+            extracted.append({"text": text, "profile_link": p_link})
             
-            extracted_data.append({
-                "text": text,
-                "profile_link": profile_link
-            })
-            
-    progress_bar.progress(100)
-    status_text.text("HTML Parsed and Cleaned Successfully! 🎯")
-    time.sleep(0.5)
-    progress_bar.empty()
-    status_text.empty()
-    
-    unique_data = {item['text']: item['profile_link'] for item in extracted_data}
-    return [{"text": k, "profile_link": v} for k, v in unique_data.items()]
+    # Quick duplicate remove
+    seen = set()
+    unique_data = []
+    for item in extracted:
+        if item['text'] not in seen:
+            seen.add(item['text'])
+            unique_data.append(item)
+    return unique_data
 
-def analyze_and_qualify_with_gemini(data_list, niche):
+def analyze_gemini_fast(data_list, niche):
     prompt = f"""
-    Analyze the following raw Facebook comments/posts data.
+    Analyze these Facebook snippets. Extract ONLY contractors or prospects located in the USA.
+    Categorize them strictly using:
+    Main Categories: Roofing, HVAC, Plumbing, General Contractor, Electrical, Landscaping, Painting, Masonry, Siding, Flooring, Drywall, Fencing, Concrete, Carpentry, Demolition, Waterproofing, Pest Control, Cleaning, Solar, Window/Door, Remodeling, Tree Services.
     
-    CRITICAL TARGET: Find and qualify ONLY contractors or prospects/clients based in the UNITED STATES (USA).
-    If it is NOT in the USA or has no USA context, exclude it.
-
-    You must map the data strictly to the following taxonomy:
+    Output a valid JSON array with exact keys:
+    'name', 'role_or_need' ('Contractor' or 'Prospect'), 'category', 'sub_category', 'location', 'is_sale_post' ('Yes' or 'No'), 'business_name', 'contact_info', 'snippet_context'.
     
-    MAIN CATEGORIES (20+):
-    Roofing, HVAC, Plumbing, General Contractor, Electrical, Landscaping & Lawn Care, Painting & Wallcovering, Masonry & Brickwork, Siding & Gutters, Flooring & Tiling, Drywall & Plastering, Fencing & Decking, Concrete & Paving, Carpentry & Framing, Demolition & Excavation, Waterproofing & Foundation, Pest Control, Cleaning & Pressure Washing, Solar Installation, Window & Door Installation, Remodeling & Renovation, Tree Services.
-
-    SUB-CATEGORIES (50+ Reference):
-    Metal Roofing, Asphalt Shingle, Tile Roof, Flat Roof Repair, AC Repair, Furnace Installation, Commercial HVAC, Residential Plumbing, Drain Cleaning, Emergency Plumber, Home Remodeling, Deck Building, Concrete Driveways, Asphalt Paving, Panel Upgrade, Lighting Design, House Painting, Commercial Painting, Siding Repair, Gutter Cleaning, Tile Installation, Hardwood Flooring, Drywall Patching, Retaining Walls, Tree Removal, Stump Grinding, Lawn Mowing, Landscape Design, Brick Repair, Concrete Pouring, Kitchen Remodeling, Bathroom Renovation, Solar Panel Maintenance, Window Replacement, Entry Door Setup, Crawlspace Encapsulation, Foundation Repair, Termite Control, Bedbug Treatment, Pressure Washing, Roof Soft Wash, Window Cleaning, Attic Insulation, Fence Installation, Structural Framing, Trim Carpentry, Shed Building, Pool Deck Repair, Epoxy Flooring, Asbestos Removal.
-
-    Extract these exact fields in a clean JSON array structure:
-    - 'name': Profile Name
-    - 'role_or_need': Must be 'Contractor' or 'Prospect'
-    - 'category': Choose best-fit from Main Categories
-    - 'sub_category': Choose best-fit from Sub-Categories (or specify precisely if not listed)
-    - 'location': Extract the Area/City/State in the USA (e.g., Dallas, TX or Orlando, FL). If state/city isn't explicitly mentioned, try to infer from area codes or local indicators, else mark "USA"
-    - 'is_sale_post': 'Yes' (if trying to sell something) or 'No'
-    - 'business_name': Company Name (or 'N/A')
-    - 'contact_info': Phone/Email/Website (or 'N/A')
-    - 'snippet_context': 1 short sentence summary of their comment
-
-    Raw Texts to Analyze:
-    {json.dumps(data_list[:40])}
+    Data: {json.dumps(data_list[:35])}
     """
-    
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
-        response_text = response.text.strip()
-        match = re.search(r"\[\s*\{.*\}\s*\]", response_text, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
-        return []
-    except Exception as e:
-        st.error(f"Gemini API Error: {e}")
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        res_text = response.text.strip()
+        match = re.search(r"\[\s*\{.*\}\s*\]", res_text, re.DOTALL)
+        return json.loads(match.group(0)) if match else []
+    except:
         return []
 
-# ----------------- MAIN APP UI -----------------
-if extraction_mode == "Paste Cleaned HTML (Safest & Fast)":
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    st.subheader("📋 Scraping Environment Config")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        group_link_input = st.text_input("🔗 Target Facebook Group Link:", placeholder="Enter FB Group Link")
-    with col2:
-        post_link_input = st.text_input("📌 Specific Post Link:", placeholder="Enter FB Post Link")
-        
-    html_input = st.text_area("📄 Paste FB Page/Comments HTML Source Here:", height=250)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    if st.button("🚀 Process & Extract USA Contractors"):
-        if not html_input.strip():
-            st.warning("Pehle HTML block paste karo bhai!")
-        else:
-            raw_data = clean_and_extract_html_fast(html_input)
-            st.success(f"Extracted {len(raw_data)} unique content lines. Starting AI qualification...")
+# ----------------- ACTION BUTTON -----------------
+if st.button("🚀 Process & Save Leads"):
+    if not html_input.strip():
+        st.warning("Pehle data paste karo bhai!")
+    else:
+        with st.spinner("Extracting..."):
+            raw_data = process_data_soft(html_input)
             
-            if len(raw_data) > 0:
-                with st.spinner("Gemini AI is analyzing & classifying leads..."):
-                    qualified_leads = analyze_and_qualify_with_gemini(raw_data, niche_type)
+        if len(raw_data) > 0:
+            with st.spinner("AI Filtering (USA Target)..."):
+                qualified = analyze_gemini_fast(raw_data, niche_type)
+                
+                if qualified:
+                    # Link mapping
+                    for lead in qualified:
+                        lead["group_link"] = group_link_input if group_link_input else "N/A"
+                        lead["post_link"] = post_link_input if post_link_input else "N/A"
+                        lead["profile_link"] = "N/A"
+                        for item in raw_data:
+                            if lead["name"].lower() in item["text"].lower():
+                                lead["profile_link"] = item["profile_link"]
+                                break
                     
-                    if qualified_leads:
-                        # Link Map matching
-                        for lead in qualified_leads:
-                            lead["group_link"] = group_link_input if group_link_input else "N/A"
-                            lead["post_link"] = post_link_input if post_link_input else "N/A"
-                            
-                            matching_link = "N/A"
-                            for item in raw_data:
-                                if lead["name"].lower() in item["text"].lower():
-                                    matching_link = item["profile_link"]
-                                    break
-                            lead["profile_link"] = matching_link
-
-                        df = pd.DataFrame(qualified_leads)
-                        
-                        # Show Visualized Premium Table
-                        st.subheader("🎯 Qualified USA Leads")
-                        st.dataframe(df[[
-                            "name", "role_or_need", "category", "sub_category", "location",
-                            "is_sale_post", "business_name", "contact_info", 
-                            "snippet_context", "profile_link", "post_link", "group_link"
-                        ]], use_container_width=True)
-                        
-                        # Google Sheets Sync
-                        with st.spinner("Writing records to Master Google Sheet..."):
-                            try:
-                                sheet_name = "Vedonyam_Master_Leads_Optimize_My_GBP"
-                                sheet = gc.open(sheet_name).sheet1
-                                
-                                for lead in qualified_leads:
-                                    row = [
-                                        lead.get("name", "N/A"),
-                                        lead.get("role_or_need", "N/A"),
-                                        lead.get("category", "N/A"),
-                                        lead.get("sub_category", "N/A"),
-                                        lead.get("location", "N/A"),
-                                        lead.get("is_sale_post", "N/A"),
-                                        lead.get("business_name", "N/A"),
-                                        lead.get("contact_info", "N/A"),
-                                        lead.get("snippet_context", "N/A"),
-                                        lead.get("profile_link", "N/A"),
-                                        lead.get("post_link", "N/A"),
-                                        lead.get("group_link", "N/A"),
-                                        "FB Comments"
-                                    ]
-                                    sheet.append_row(row)
-                                st.success(f"🔥 Success! {len(qualified_leads)} leads pushed to Google Sheets.")
-                            except Exception as sheet_err:
-                                st.error(f"Google Sheet Export Error: {sheet_err}")
-                    else:
-                        st.info("No active USA leads matching the criteria were found in this snippet.")
+                    df = pd.DataFrame(qualified)
+                    st.subheader("🎯 Target USA Leads")
+                    st.dataframe(df, use_container_width=True)
+                    
+                    # Batch Excel/Google Sheet Sync (RAM & Network friendly)
+                    with st.spinner("Syncing to Google Sheets..."):
+                        try:
+                            sheet = gc.open("Vedonyam_Master_Leads_Optimize_My_GBP").sheet1
+                            rows_to_push = []
+                            for lead in qualified:
+                                rows_to_push.append([
+                                    lead.get("name", "N/A"), lead.get("role_or_need", "N/A"),
+                                    lead.get("category", "N/A"), lead.get("sub_category", "N/A"),
+                                    lead.get("location", "N/A"), lead.get("is_sale_post", "N/A"),
+                                    lead.get("business_name", "N/A"), lead.get("contact_info", "N/A"),
+                                    lead.get("profile_link", "N/A"), lead.get("post_link", "N/A"),
+                                    lead.get("group_link", "N/A"), "FB Comments"
+                                ])
+                            sheet.append_rows(rows_to_push)
+                            st.success(f"🔥 Successfully saved {len(qualified)} Leads!")
+                        except Exception as e:
+                            st.error(f"Sheet Sync Error: {e}")
+                else:
+                    st.info("No active USA leads detected.")
+        else:
+            st.info("No text extracted. Check HTML.")
