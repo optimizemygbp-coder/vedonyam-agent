@@ -46,8 +46,6 @@ st.title("🛡️ Vedonyam Autonomous Leads & Project System")
 st.markdown("---")
 
 # 1. AUTHENTICATIONS & CLOUD HANDSHAKE
-import base64  # Ye line top par import mein bhi daal sakte ho ya yahan bhi chalegi
-
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -55,10 +53,8 @@ try:
     # Google Sheets Security Connection
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # Base64 string ko decode karke JSON banane ka permanent fix
-    creds_base64 = st.secrets["GOOGLE_CREDS_BASE64"]
-    creds_json = base64.b64decode(creds_base64).decode("utf-8")
-    creds_dict = json.loads(creds_json)
+    # Direct JSON parsing from secrets
+    creds_dict = json.loads(st.secrets["GOOGLE_CREDS_JSON"])
     
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     gc = gspread.authorize(creds)
