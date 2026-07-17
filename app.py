@@ -14,8 +14,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 
-st.set_page_config(page_title="Vedonyam - Anti-Ban USA Bot", layout="wide")
-st.title("🛡️ Vedonyam Anti-Ban Autonomous FB Bot")
+st.set_page_config(page_title="Vedonyam Hybrid Engine", layout="wide")
+st.title("🛡️ Vedonyam Lead Gathering System (Dual-Mode)")
 st.markdown("---")
 
 # ----------------- INITIALIZATION -----------------
@@ -57,13 +57,12 @@ categories_list = [
 ]
 
 niche_type = st.selectbox("🎯 Target Niche", categories_list)
-target_url = st.text_input("🔗 Target FB URL:", placeholder="https://www.facebook.com/...")
 
-# Premium Cookie Security Input
-fb_cookie = st.text_input("🍪 Paste FB Cookie String (e.g., c_user=...; xs=...;):", type="password")
+# DUAL MODE SELECTOR
+mode = st.radio("⚙️ Operational Mode Select Karo:", ["📋 Paste Raw HTML (Instant & 100% Safe)", "🤖 Run Cloud Stealth Bot (Risk of Timeout)"])
 
 # ----------------- SAFE COOKIE BOT ENGINE -----------------
-def run_safe_cookie_bot(url, cookie_str, scrolls=4):
+def run_safe_cookie_bot(url, cookie_str, scrolls=3):
     options = Options()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
@@ -72,44 +71,28 @@ def run_safe_cookie_bot(url, cookie_str, scrolls=4):
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
     driver = webdriver.Chrome(options=options)
+    driver.set_page_load_timeout(50)  # Stop infinite freezing
     
-    # Step 1: Hit domain first to inject cookies
-    driver.get("https://www.facebook.com")
-    time.sleep(2)
-    
-    # Step 2: Parse and inject cookie string securely
     try:
+        driver.get("https://www.facebook.com")
         matches = re.findall(r'([^=;\s]+)=([^;]+)', cookie_str)
         for name, value in matches:
             driver.add_cookie({"name": name, "value": value, "domain": ".facebook.com"})
-        st.info("🔒 Session cookies injected safely into stealth browser container.")
-    except Exception as ce:
-        st.error(f"Cookie Injection Format Error: {ce}")
-        driver.quit()
-        return ""
-
-    # Step 3: Open target link as a logged-in trusted human account
-    driver.get(url)
-    time.sleep(random.uniform(5.1, 7.3))
-    
-    # Auto-scrolling and revealing comments smoothly
-    for i in range(scrolls):
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(random.uniform(3.5, 5.5)) # Variable dynamic delays to mimic human behavior
         
-        try:
-            more_comments = driver.find_elements(By.XPATH, "//span[contains(text(), 'View more comments') or contains(text(), 'Write a comment')]")
-            if more_comments:
-                driver.execute_script("arguments[0].click();", more_comments[0])
-                time.sleep(random.uniform(2.0, 4.0))
-        except:
-            pass
-            
-    raw_html = driver.page_source
-    driver.quit()
-    return raw_html
+        driver.get(url)
+        time.sleep(4)
+        
+        for _ in range(scrolls):
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(3)
+        raw_html = driver.page_source
+        driver.quit()
+        return raw_html
+    except Exception as e:
+        driver.quit()
+        return f"ERROR: {str(e)}"
 
-# ----------------- PARSING & AI LOGIC -----------------
+# ----------------- DATA CLEANING ENGINE -----------------
 def extract_html_data(html_content):
     cleaned = re.sub(r'<(script|style|svg|path|canvas|iframe)[^>]*?>([\s\S]*?)</\1>', '', html_content)
     soup = BeautifulSoup(cleaned, 'html.parser')
@@ -147,40 +130,45 @@ def analyze_gemini(data_list):
     except:
         return []
 
-# ----------------- TRIGGER ACTION -----------------
-if st.button("🛡️ Launch Shielded Automation"):
-    if not target_url.strip() or not fb_cookie.strip():
-        st.warning("Bhai, Target URL aur FB Cookie string dono mandatory hain safety ke liye!")
-    else:
-        with st.status("🕵️ Executing Anti-Ban Identity Protocol...", expanded=True) as status:
-            status.write("Initializing trusted user session...")
-            page_html = run_safe_cookie_bot(target_url, fb_cookie, scrolls=4)
-            
-            if not page_html:
-                status.update(label="Session crashed due to cookie error.", state="error")
-                st.stop()
-                
-            status.write("Reading hidden visual data fields...")
-            raw_data = extract_html_data(page_html)
-            
-            status.write("Gemini Engine parsing target niches...")
-            qualified = analyze_gemini(raw_data)
-            
-            if qualified:
-                df = pd.DataFrame(qualified)
-                st.subheader("🎯 Safe Qualified USA Leads")
-                st.dataframe(df, use_container_width=True)
-                
-                status.write("Pushed new rows to your master tracking sheet...")
-                try:
+# ----------------- LOGIC CONDITIONAL RENDER -----------------
+if mode == "🤖 Run Cloud Stealth Bot (Risk of Timeout)":
+    target_url = st.text_input("🔗 Target FB URL:", placeholder="https://www.facebook.com/...")
+    fb_cookie = st.text_input("🍪 Paste FB Cookie String:", type="password")
+    
+    if st.button("🚀 Trigger Automation"):
+        if not target_url or not fb_cookie:
+            st.warning("Please enter required inputs.")
+        else:
+            with st.status("Executing system actions...", expanded=True) as status:
+                page_html = run_safe_cookie_bot(target_url, fb_cookie)
+                if "ERROR" in page_html:
+                    status.update(label="Cloud connection timed out/blocked by FB. Please use 'Paste Raw HTML' mode!", state="error")
+                else:
+                    raw_data = extract_html_data(page_html)
+                    qualified = analyze_gemini(raw_data)
+                    # Sync to sheet logic...
+                    if qualified:
+                        sheet = gc.open("Vedonyam_Master_Leads_Optimize_My_GBP").sheet1
+                        rows = [[l.get("name","N/A"), l.get("role_or_need","N/A"), l.get("category","N/A"), l.get("sub_category","N/A"), l.get("location","N/A"), l.get("is_sale_post","N/A"), l.get("business_name","N/A"), l.get("contact_info","N/A"), l.get("profile_link","N/A"), target_url, "Bot Mode"] for l in qualified]
+                        sheet.append_rows(rows)
+                        status.update(label="Success! Pushed to Sheet.", state="complete")
+                        st.dataframe(pd.DataFrame(qualified))
+else:
+    target_url = st.text_input("🔗 Source FB URL (For tracking):")
+    html_input = st.text_area("📋 Mobile/PC se Comments ka Source Code ya Text copy karke yahan paste karo:", height=250)
+    
+    if st.button("🔥 Process & Push Leads"):
+        if not html_input:
+            st.warning("Please paste the data content!")
+        else:
+            with st.spinner("Processing extracted payload via Gemini AI..."):
+                raw_data = extract_html_data(html_input)
+                qualified = analyze_gemini(raw_data)
+                if qualified:
                     sheet = gc.open("Vedonyam_Master_Leads_Optimize_My_GBP").sheet1
-                    rows = [[l.get("name","N/A"), l.get("role_or_need","N/A"), l.get("category","N/A"), 
-                             l.get("sub_category","N/A"), l.get("location","N/A"), l.get("is_sale_post","N/A"), 
-                             l.get("business_name","N/A"), l.get("contact_info","N/A"), l.get("profile_link","N/A"), 
-                             target_url, "Shielded Cookie Bot"] for l in qualified]
+                    rows = [[l.get("name","N/A"), l.get("role_or_need","N/A"), l.get("category","N/A"), l.get("sub_category","N/A"), l.get("location","N/A"), l.get("is_sale_post","N/A"), l.get("business_name","N/A"), l.get("contact_info","N/A"), l.get("profile_link","N/A"), target_url, "Manual Paste"] for l in qualified]
                     sheet.append_rows(rows)
-                    status.update(label="🔥 Data Synced Securely! Account Safe.", state="complete")
-                except Exception as e:
-                    st.error(f"Sheet Error: {e}")
-            else:
-                status.update(label="Analysis done. No USA contractors caught in this run.", state="complete")
+                    st.success("🎯 Data extracted successfully and sent to Google Sheets!")
+                    st.dataframe(pd.DataFrame(qualified))
+                else:
+                    st.info("No targeted USA contractors found in this payload.")
