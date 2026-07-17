@@ -46,6 +46,7 @@ st.title("🛡️ Vedonyam Autonomous Leads & Project System")
 st.markdown("---")
 
 # 1. AUTHENTICATIONS & CLOUD HANDSHAKE
+# 1. AUTHENTICATIONS & CLOUD HANDSHAKE
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -53,7 +54,7 @@ try:
     # Google Sheets Security Connection
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # Direct JSON parsing from secrets
+    # Direct aur clean JSON string loading (No Base64!)
     creds_dict = json.loads(st.secrets["GOOGLE_CREDS_JSON"])
     
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
