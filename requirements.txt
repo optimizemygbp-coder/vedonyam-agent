@@ -1,7 +1,7 @@
 streamlit
 google-genai
-playwright
-pandas
 gspread
 oauth2client
+playwright
 beautifulsoup4
+pandas
