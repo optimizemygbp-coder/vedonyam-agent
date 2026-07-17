@@ -1,192 +1,188 @@
-import os
-import shutil
-
-# Automatic Secrets Fixer for Render
-if os.path.exists("secrets.toml"):
-    os.makedirs(".streamlit", exist_ok=True)
-    shutil.copy("secrets.toml", ".streamlit/secrets.toml")
-
-# 🚀 NAYA CODE: Automatic Playwright Browser Installer
-try:
-    import playwright
-    # Check if browser is already installed, if not, install it
-    os.system("playwright install chromium")
-except Exception as e:
-    print(f"Playwright install error: {e}")
-
-import os
-import shutil
-
-# Automatic Secrets Synchronizer for Render Cloud
-if os.path.exists("secrets.toml"):
-    os.makedirs(".streamlit", exist_ok=True)
-    shutil.copy("secrets.toml", ".streamlit/secrets.toml")
-import os
-import shutil
-
-# Automatic Secrets Fixer for Render
-if os.path.exists("secrets.toml"):
-    os.makedirs(".streamlit", exist_ok=True)
-    shutil.copy("secrets.toml", ".streamlit/secrets.toml")
 import streamlit as st
-import asyncio
-import random
-import datetime
 import json
+import re
+from google import genai
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
-from google import genai
-from google.genai import types
+import pandas as pd
 
-# Page Configurations
-st.set_page_config(page_title="Vedonyam Lead Core", page_icon="🛡️", layout="centered")
-st.title("🛡️ Vedonyam Autonomous Leads & Project System")
-st.markdown("---")
+st.set_page_config(page_title="Vedonyam - USA Lead Extractor", layout="wide")
+st.title("🚀 Vedonyam FB Comments USA Lead Extractor")
 
-# 1. AUTHENTICATIONS & CLOUD HANDSHAKE
-# 1. AUTHENTICATIONS & CLOUD HANDSHAKE
+# ----------------- AUTHENTICATIONS & HANDSHAKE -----------------
 try:
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    # 1. Gemini API Auth
+    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+    if not GEMINI_API_KEY:
+        st.error("Missing GEMINI_API_KEY in Secrets!")
+        st.stop()
     client = genai.Client(api_key=GEMINI_API_KEY)
     
-    # Google Sheets Security Connection
+    # 2. Google Sheets Authentication (Clean fallback mechanism)
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # Direct aur clean JSON string loading (No Base64!)
-    creds_dict = json.loads(st.secrets["GOOGLE_CREDS_JSON"])
-    
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    gc = gspread.authorize(creds)
-except Exception as auth_err:
-    st.error(f"Initialization Error: Please check Streamlit Secrets! ({auth_err})")
-
-# 2. UNDERCOVER CLOUD BROWSER (COOKIE INJECTION ENGINE)
-async def run_cloud_crawler(target_url, cookies_json_str):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 720}
-        )
-        
-        # Inject Active Session Tokens
-        if cookies_json_str:
-            try:
-                cookies = json.loads(cookies_json_str)
-                
-                # 🚀 Cookies sameSite fix karne ka automatic logic yahan set ho gaya hai
-                if isinstance(cookies, list):
-                    for cookie in cookies:
-                        if "sameSite" in cookie:
-                            val = str(cookie["sameSite"]).lower()
-                            if val == "lax":
-                                cookie["sameSite"] = "Lax"
-                            elif val == "strict":
-                                cookie["sameSite"] = "Strict"
-                            elif val == "none":
-                                cookie["sameSite"] = "None"
-                            else:
-                                del cookie["sameSite"]
-                                
-                await context.add_cookies(cookies)
-            except Exception as e:
-                st.error(f"Invalid Cookie JSON Format: {e}")
-                return None
-
-                
-        page = await context.new_page()
-        st.info("🔄 Cloud agent is browsing target portal undercover...")
-        
-                # Network slow hone par bhi pipeline na ruke, isliye timeout 90 seconds kiya aur networkidle lagaya
-        try:
-            await page.goto(target_url, wait_until="networkidle", timeout=90000)
-        except Exception as e:
-            # Agar domcontentloaded tak bhi load ho jaye toh safe side par proceed karein
-            st.warning("⚠️ Network slow hai, par data extraction check kar rahe hain...")
-
-        await asyncio.sleep(random.randint(5, 10)) 
-        
-        for i in range(random.randint(3, 5)):
-            await page.evaluate("window.scrollBy(0, window.innerHeight * 0.6);")
-            await asyncio.sleep(random.randint(3, 7))
-            
-        html_content = await page.content()
-        await context.close()
-        return html_content
-
-# 3. INTERFACE CONTROLS
-st.subheader("🎯 Configure Pipeline Parameters")
-category = st.selectbox("Select Trade/Niche:", ["Roofing", "Plumbing", "Fencing", "Painting", "General Construction"])
-fb_link = st.text_input("Enter Target Link (Facebook Post/Group/Project Page):")
-fb_cookies = st.text_area("Paste FB Session Cookies (Copy from EditThisCookie):", height=150)
-
-if st.button("🚀 Launch Autonomous Extraction"):
-    if not fb_link or not fb_cookies:
-        st.warning("Please fill out both the URL field and the Session Cookies box.")
+    # Check if raw JSON string exists in secrets
+    raw_creds = st.secrets.get("GOOGLE_CREDS_JSON", "")
+    if raw_creds:
+        creds_dict = json.loads(raw_creds)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        gc = gspread.authorize(creds)
     else:
-        with st.spinner("Agent working on cloud... Please wait..."):
-            try:
-                raw_html = asyncio.run(run_cloud_crawler(fb_link, fb_cookies))
-                
-                if not raw_html:
-                    st.error("Could not fetch page contents.")
-                    st.stop()
-                    
-                soup = BeautifulSoup(raw_html, 'html.parser')
-                clean_text = soup.get_text(separator=' ', strip=True)
-                
-                st.info("🧠 Brain Core analyzing posts and buyer urgency...")
-                system_instruction = (
-                    "You are the elite backend lead qualification system for Vedonyam Marketing. "
-                    "Analyze the scraped web content. Identify hungry contractors, active job posts, or project requests. "
-                    "Extract: Contractor/Client Name, Contact info/Profile link, Estimated Lead Value (between $30 and $100 based on urgency), "
-                    "and write a high-converting, tailored pitch script for outreach. "
-                    "Output MUST be a strict JSON array of objects with keys: contractor_name, profile_link, contact_info, estimated_lead_value_usd, custom_dm_script."
-                )
-                
-                response = client.models.generate_content(
-                    model='gemini-1.5-flash',
+        st.error("Google credentials configuration not found. Please set GOOGLE_CREDS_JSON in Streamlit secrets.")
+        st.stop()
+except Exception as auth_err:
+    st.error(f"Initialization Error: Please check Streamlit Secrets Configuration! Details: {auth_err}")
+    st.stop()
 
-                    contents=f"Extract and script valid leads for {category} from this feed:\n{clean_text[:40000]}",
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction, 
-                        temperature=0.2,
-                        response_mime_type="application/json"
-                    )
-                )
-                
-                raw_response = response.text.strip()
-                extracted_leads = json.loads(raw_response)
-                
-                if not extracted_leads:
-                    st.warning("AI did not find any matching leads in this text snippet.")
-                else:
-                    st.info("📝 Injecting clean records into Google Sheet...")
-                    spreadsheet = gc.open("Vedonyam_Master_Leads_Optimize_My_GBP")
+# ----------------- UI INPUTS -----------------
+st.sidebar.header("Target Configuration")
+niche_type = st.sidebar.selectbox("Select Target Niche", ["Roofing", "HVAC", "Plumbing", "General Contractor"])
+extraction_mode = st.sidebar.radio("Extraction Mode", ["Paste Cleaned HTML (Safest & Highly Recommended)", "Auto Live Scrape (Requires session cookies)"])
+
+# ----------------- DATA PROCESSING FUNCTIONS -----------------
+def extract_leads_from_html(html_content):
+    """
+    Highly optimized parser: Minimal RAM usage, filters junk instantly.
+    """
+    soup = BeautifulSoup(html_content, 'lxml' if 'lxml' in globals() else 'html.parser')
+    extracted_data = []
+    
+    # Facebook comments containers ko directly target karna for faster speed
+    comment_blocks = soup.find_all(['div', 'span'], attrs={"dir": "auto"})
+    
+    for block in comment_blocks:
+        text = block.get_text().strip()
+        if len(text) > 12:  # Non-useful small text ko filter out karna CPU/RAM bachane ke liye
+            # Profile link dhoondhne ke liye uske parent anchor tags check karna
+            profile_link = "N/A"
+            parent_a = block.find_parent('a') or (block.find_previous('a') if hasattr(block, 'find_previous') else None)
+            if parent_a and parent_a.has_attr('href'):
+                href = parent_a['href']
+                if "facebook.com" in href or "/user/" in href or "profile.php" in href:
+                    profile_link = href if href.startswith("http") else f"https://www.facebook.com{href}"
+            
+            extracted_data.append({
+                "text": text,
+                "profile_link": profile_link
+            })
+            
+    # Remove duplicates to optimize data size
+    unique_data = {item['text']: item['profile_link'] for item in extracted_data}
+    return [{"text": k, "profile_link": v} for k, v in unique_data.items()]
+
+def analyze_and_qualify_with_gemini(data_list, niche):
+    """
+    Fast processing instructions for Gemini to target USA Contractors, Category/Sub-category, and Sale Type.
+    """
+    prompt = f"""
+    Analyze the following raw comments/texts from Facebook.
+    
+    Your absolute target: Filter and extract ONLY contractors or prospects/clients based in the UNITED STATES (USA). Ignore other countries.
+    If the location cannot be determined but the business structure fits USA terminology (e.g., LLC, State-specific references, zip codes), include them.
+
+    For each valid lead, extract these precise fields in a JSON array format:
+    - 'name': Profile Name
+    - 'role_or_need': 'Contractor' or 'Prospect'
+    - 'category': Main Business Category (e.g., Roofing, HVAC, Plumbing)
+    - 'sub_category': Specific trade (e.g., Metal Roofing, AC Installation, Drain Cleaning)
+    - 'is_sale_post': 'Yes' (if post/comment is selling services/products) or 'No'
+    - 'business_name': Company Name (or 'N/A')
+    - 'contact_info': Phone/Email/Website (or 'N/A')
+    - 'snippet_context': 1 short sentence summary of their comment
+
+    Raw Data to process:
+    {json.dumps(data_list[:40])}  # Fast batch size of 40
+    """
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        response_text = response.text.strip()
+        match = re.search(r"\[\s*\{.*\}\s*\]", response_text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return []
+    except Exception as e:
+        st.error(f"Gemini Processing Error: {e}")
+        return []
+
+# ----------------- APP BODY -----------------
+if extraction_mode == "Paste Cleaned HTML (Safest & Highly Recommended)":
+    st.info("💡 **Highly Optimized Mode:** Local browser se comments HTML paste karein. Low memory par bhi fast extract hoga.")
+    
+    # Links manually input karne ke liye columns taaki targeting easy ho jaye
+    col1, col2 = st.columns(2)
+    with col1:
+        group_link_input = st.text_input("Group Link:", placeholder="https://www.facebook.com/groups/...")
+    with col2:
+        post_link_input = st.text_input("Post Link:", placeholder="https://www.facebook.com/groups/.../posts/...")
+
+    html_input = st.text_area("Paste FB Comments HTML Section here:", height=200)
+    
+    if st.button("Extract & Qualify USA Leads 🚀"):
+        if html_input.strip() == "":
+            st.warning("Please paste some HTML content first!")
+        else:
+            with st.spinner("Processing HTML (RAM-Saving Mode)..."):
+                raw_data = extract_leads_from_html(html_input)
+                st.success(f"Extracted {len(raw_data)} unique text blocks!")
+            
+            if len(raw_data) > 0:
+                with st.spinner("AI Analysis (USA Filters, Categories & Links Mapping)..."):
+                    # Raw texts filter karke analyze karna
+                    text_only_list = [item["text"] for item in raw_data]
+                    qualified_leads = analyze_and_qualify_with_gemini(raw_data, niche_type)
                     
-                    current_date = datetime.datetime.now().strftime("%d_%b_%Y")
-                    tab_name = f"{category}_{current_date}"
-                    
-                    try:
-                        worksheet = spreadsheet.worksheet(tab_name)
-                    except gspread.exceptions.WorksheetNotFound:
-                        worksheet = spreadsheet.add_worksheet(title=tab_name, rows="1000", cols="7")
-                        worksheet.append_row(["Timestamp", "Contractor Name", "Profile/Post Link", "Contact Info", "Lead Value ($)", "Custom Pitch Script", "Status"])
-                    
-                    for lead in extracted_leads:
-                        worksheet.append_row([
-                            str(datetime.datetime.now()),
-                            lead.get("contractor_name", "N/A"),
-                            lead.get("profile_link", "N/A"),
-                            lead.get("contact_info", "N/A"),
-                            lead.get("estimated_lead_value_usd", "50"),
-                            lead.get("custom_dm_script", "N/A"),
-                            "Fresh / Not Contacted"
-                        ])
+                    if qualified_leads:
+                        # Profile link back-map karna
+                        for lead in qualified_leads:
+                            lead["group_link"] = group_link_input if group_link_input else "N/A"
+                            lead["post_link"] = post_link_input if post_link_input else "N/A"
+                            
+                            # Matching profile link from HTML parsing
+                            matching_link = "N/A"
+                            for item in raw_data:
+                                if lead["name"].lower() in item["text"].lower():
+                                    matching_link = item["profile_link"]
+                                    break
+                            lead["profile_link"] = matching_link
                         
-                    st.success(f"🎉 Success! {len(extracted_leads)} qualified leads synced into Sheet tab: '{tab_name}'!")
-                    
-            except Exception as pipeline_error:
-                st.error(f"Pipeline Interrupted: {pipeline_error}")
+                        df = pd.DataFrame(qualified_leads)
+                        
+                        # Displaying final table with all your targeted fields
+                        st.subheader("🎯 USA Leads Qualified by AI")
+                        st.dataframe(df[[
+                            "name", "role_or_need", "category", "sub_category", 
+                            "is_sale_post", "business_name", "contact_info", 
+                            "snippet_context", "profile_link", "post_link", "group_link"
+                        ]])
+                        
+                        # Google Sheets Export
+                        try:
+                            sheet_name = "Vedonyam_Master_Leads_Optimize_My_GBP"
+                            sheet = gc.open(sheet_name).sheet1
+                            
+                            for lead in qualified_leads:
+                                row = [
+                                    lead.get("name", "N/A"),
+                                    lead.get("role_or_need", "N/A"),
+                                    lead.get("category", "N/A"),
+                                    lead.get("sub_category", "N/A"),
+                                    lead.get("is_sale_post", "N/A"),
+                                    lead.get("business_name", "N/A"),
+                                    lead.get("contact_info", "N/A"),
+                                    lead.get("snippet_context", "N/A"),
+                                    lead.get("profile_link", "N/A"),
+                                    lead.get("post_link", "N/A"),
+                                    lead.get("group_link", "N/A"),
+                                    "FB Comments"
+                                ]
+                                sheet.append_row(row)
+                            st.success(f"Successfully exported {len(qualified_leads)} targeted USA leads to Google Sheets!")
+                        except Exception as sheet_err:
+                            st.error(f"Failed to export to Google Sheet: {sheet_err}")
+                    else:
+                        st.info("AI did not detect any direct USA contractor/prospect profiles in these snippets.")
